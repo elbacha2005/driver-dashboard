@@ -35,6 +35,9 @@
   .head .name{font-size:20px;font-weight:700;color:var(--navy);line-height:1.2}
   .head .sub{font-size:13px;color:var(--muted);margin-top:3px}
   .head .sub b{color:var(--ink);font-weight:600}
+  .hire{display:inline-block;margin-top:7px;font-size:12px;font-weight:700;color:var(--navy);
+    background:#eef2f9;border:1px solid #dbe3f0;padding:4px 10px;border-radius:8px}
+  .hire span{color:var(--muted);font-weight:600}
   .statut{margin-left:auto;flex:none}
   .badge{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:700;
     padding:6px 12px;border-radius:999px;white-space:nowrap}
@@ -89,7 +92,10 @@
 </div>
 
 <script>
-const CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSaQuDWqwtQjwcMUhM7OOY4QOdOy27n7LAneA6DaBrsOR4MGIHQYMf29daOVAQkf4Wafby5OxXayLfb/pubhtml?gid=182801471&single=true";
+/* ============================================================
+   >>> COLLEZ ICI le lien CSV publié de la table de TEST (Mohamed) <<<
+   ============================================================ */
+const CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSaQuDWqwtQjwcMUhM7OOY4QOdOy27n7LAneA6DaBrsOR4MGIHQYMf29daOVAQkf4Wafby5OxXayLfb/pub?gid=182801471&single=true&output=csv";
 
 function parseCSV(txt){
   const rows=[]; let f='',row=[],q=false;
@@ -99,9 +105,18 @@ function parseCSV(txt){
       else if(c==='\n'){row.push(f);rows.push(row);row=[];f='';}
       else if(c!=='\r')f+=c; } }
   if(f.length||row.length){row.push(f);rows.push(row);}
-  const head=rows.shift().map(h=>h.trim());
+  // skip any leading blank rows so the REAL header row is used
+  while(rows.length && rows[0].every(function(x){return !x || !x.replace(/\ufeff/,'').trim();})) rows.shift();
+  const head=rows.shift().map(h=>h.replace(/\ufeff/g,'').trim());
   return rows.filter(r=>r.some(x=>x&&x.trim()))
              .map(r=>Object.fromEntries(head.map((h,i)=>[h,(r[i]||'').trim()])));
+}
+/* get a field by exact key OR by normalized (accent/space/underscore-insensitive) match */
+function field(d, name){
+  if(d[name]!==undefined) return d[name];
+  const target=name.toLowerCase().replace(/[^a-z0-9]/g,'');
+  const k=Object.keys(d).find(h=>h.toLowerCase().replace(/[^a-z0-9]/g,'')===target);
+  return k?d[k]:'';
 }
 async function loadData(){
   const res = await fetch(CSV_URL);
@@ -110,6 +125,38 @@ async function loadData(){
 }
 
 const has = v => v!==undefined && v!==null && String(v).trim()!=='';
+
+/* find a column by fuzzy keyword (handles 'date d'embauchche' typo etc.) */
+function pick(d, keyword){
+  const k = Object.keys(d).find(h => h.toLowerCase().replace(/[^a-z]/g,'').includes(keyword));
+  return k ? d[k] : '';
+}
+/* match a column containing ALL given fragments (bulletproof for accents/underscores) */
+function pickAll(d){
+  const frags=[].slice.call(arguments,1);
+  const k=Object.keys(d).find(h=>{const n=h.toLowerCase().replace(/[^a-z]/g,'');return frags.every(f=>n.includes(f));});
+  return k?d[k]:'';
+}
+/* Normalize ANY date format the sheet may emit -> jj/mm/aaaa */
+function toDate(val){
+  if(!has(val)) return '';
+  var s = String(val).trim();
+  if(/^\d+(\.\d+)?$/.test(s)){
+    var d = new Date(Date.UTC(1899,11,30) + Math.round(+s)*86400000);
+    return String(d.getUTCDate()).padStart(2,'0')+'/'
+         + String(d.getUTCMonth()+1).padStart(2,'0')+'/'+d.getUTCFullYear();
+  }
+  var iso = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if(iso){ return iso[3]+'/'+iso[2]+'/'+iso[1]; }
+  // Long French text date e.g. "jeudi, août 12, 2021"
+  var MO={janvier:1,'février':2,fevrier:2,mars:3,avril:4,mai:5,juin:6,juillet:7,'août':8,aout:8,septembre:9,octobre:10,novembre:11,'décembre':12,decembre:12};
+  var fr = s.toLowerCase().match(/([a-zà-ÿ]+)\s+(\d{1,2}),?\s+(\d{4})/);
+  if(fr && MO[fr[1]]){
+    return String(fr[2]).padStart(2,'0')+'/'+String(MO[fr[1]]).padStart(2,'0')+'/'+fr[3];
+  }
+  return s.split(' ')[0];
+}
+
 function scoreClass(v){v=+v; return v>=80?'green':v>=65?'orange':'red';}
 function scoreTag(v){v=+v; return v>=80?'Satisfaisant':v>=65?'À améliorer':'Insuffisant';}
 function riskClass(r){r=(r||'').toLowerCase();
@@ -143,20 +190,29 @@ function render(d){
     ? '<img class="photo" src="'+d.photo_url+'" alt="">'
     : '<div class="photo">'+initials+'</div>';
   const idLine = has(d.matricule) ? 'Matricule <b>'+d.matricule+'</b>' : 'Camion <b>'+(d.camion||'—')+'</b>';
-  const fnLine = has(d.anciennete) ? ' &middot; '+d.anciennete : '';
+  const fnLine = has(d.fonction) ? ' &middot; '+d.fonction : (has(d.anciennete)?' &middot; '+d.anciennete:'');
+
+  // >>> DATE D'EMBAUCHE next to the photo <<<
+  const embauche = toDate(pick(d,'embauch'));
+  const hireLine = has(embauche)
+    ? '<div class="hire"><span>Embauché le</span> '+embauche+'</div>' : '';
 
   const tiles=[];
   if(has(d.date_formation))
-    tiles.push('<div class="tile"><div class="t">Date de formation</div><div class="v">'+d.date_formation+'</div></div>');
+    tiles.push('<div class="tile"><div class="t">Date de formation</div><div class="v">'+toDate(d.date_formation)+'</div></div>');
   if(has(d.date_visite_medicale)){
-    const exp=parseDate(d.validite_medicale), expired=exp&&exp<new Date();
-    const note = has(d.validite_medicale)
-      ? (expired?'<div class="n exp">&#9888; Expiré le '+d.validite_medicale+'</div>'
-                :'<div class="n">Valide jusqu\'au '+d.validite_medicale+'</div>') : '';
-    tiles.push('<div class="tile"><div class="t">Visite médicale</div><div class="v">'+d.date_visite_medicale+'</div>'+note+'</div>');
+    const vm=toDate(d.validite_medicale); const exp=parseDate(vm), expired=exp&&exp<new Date();
+    const note = has(vm)
+      ? (expired?'<div class="n exp">&#9888; Expiré le '+vm+'</div>'
+                :'<div class="n">Valide jusqu\'au '+vm+'</div>') : '';
+    tiles.push('<div class="tile"><div class="t">Visite médicale</div><div class="v">'+toDate(d.date_visite_medicale)+'</div>'+note+'</div>');
   }
-  if(has(d.tournee))
-    tiles.push('<div class="tile"><div class="t">Tournée d\'affectation</div><div class="v">'+d.tournee+'</div></div>');
+  if(has(d.tournee)){
+    var rt = riskClass(pickAll(d,'risk','tourn'));
+    var rtStyle = has(pickAll(d,'risk','tourn')) ? ' style="background:'+BG[rt]+';border-color:'+COL[rt]+'"' : '';
+    var rtVal = has(pickAll(d,'risk','tourn')) ? ' style="color:'+COL[rt]+'"' : '';
+    tiles.push('<div class="tile"'+rtStyle+'><div class="t">Tournée d\'affectation</div><div class="v"'+rtVal+'>'+d.tournee+'</div></div>');
+  }
   if(has(d.agence))
     tiles.push('<div class="tile"><div class="t">Agence</div><div class="v">'+d.agence+'</div></div>');
 
@@ -167,7 +223,9 @@ function render(d){
   let html='<div class="card"><div class="topbar"></div><div class="head">'+photo
     +'<div><div class="name">'+(d.nom||'—')+'</div>'
     +'<div class="sub">'+idLine+fnLine+'</div>'
-    +'<div class="sub">ID <b>'+d.id_token+'</b></div></div>'
+    +'<div class="sub">ID <b>'+field(d,'id_token')+'</b></div>'
+    +hireLine
+    +'</div>'
     +'<div class="statut"><span class="badge '+stCls+'">&#9679; '+(d.statut||'—')+'</span></div></div>';
 
   if(tiles.length)
@@ -180,15 +238,22 @@ function render(d){
       +'<div class="g-v" style="color:'+COL[rCls]+'">'+d.niveau_risque+'</div>'
       +'<div class="g-n">'+(rCls==='green'?'Conducteur conforme aux standards sécurité.':rCls==='orange'?'Vigilance recommandée.':rCls==='red'?'Action corrective requise.':'')+'</div></div></div>';
 
-  html+='<div class="foot"><span>Permis Interne de Conduite &middot; <b>CENTRALE DANONE</b></span><span>WISE&#178;</span></div></div>';
+  html+='<div class="foot"><span>Permis Interne de Conduite &middot; <b>CENTRALE DANONE</b></span><span>WISE&#178; &middot; v6-newsheet</span></div></div>';
   app.innerHTML=html;
 }
 
-function notFound(id){
+function notFound(id, data){
+  var n = data ? data.length : 0;
+  var toks = data ? data.map(function(d){return (field(d,'id_token')||'').trim();}).filter(Boolean) : [];
+  var list = toks.slice(0,12).join(', ') + (toks.length>12?' …':'');
   document.getElementById('app').innerHTML=
     '<div class="state"><h2>Conducteur introuvable</h2>'
-    +'<p>Aucun conducteur ne correspond à l\'identifiant <b>'+(id||'(vide)')+'</b>.<br>'
-    +'Vérifiez le lien du QR code.</p></div>';
+    +'<p>Identifiant recherché : <b>'+(id||'(vide)')+'</b></p>'
+    +'<p style="margin-top:14px;font-size:13px">Diagnostic : <b>'+n+'</b> conducteurs chargés depuis la feuille.<br>'
+    +'Tokens présents dans la feuille lue :</p>'
+    +'<p style="font-size:12px;color:#1f3864;word-break:break-all;margin-top:6px">'+(list||'(aucun)')+'</p>'
+    +'<p style="margin-top:14px;font-size:12px;color:#6b7686">Si votre token n\'apparaît pas ci-dessus, le dashboard lit une AUTRE feuille que celle de vos QR codes.</p>'
+    +'</div>';
 }
 
 (async function(){
@@ -196,11 +261,11 @@ function notFound(id){
   try{ data=await loadData(); }
   catch(e){ document.getElementById('app').innerHTML=
     '<div class="state"><h2>Erreur de chargement</h2>'
-    +'<p>Impossible de lire les données du conducteur.<br>Vérifiez la connexion et réessayez.</p></div>'; return; }
+    +'<p>Impossible de lire les données du conducteur.<br>Vérifiez le lien CSV et réessayez.</p></div>'; return; }
   const id=new URLSearchParams(location.search).get('id');
   if(!id){ render(data[0]); return; }
-  const d=data.find(x=>(x.id_token||'').trim()===id.trim());
-  d ? render(d) : notFound(id);
+  const d=data.find(x=>(field(x,'id_token')||'').trim()===id.trim());
+  d ? render(d) : notFound(id, data);
 })();
 </script>
 </body>
