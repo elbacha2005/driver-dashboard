@@ -160,7 +160,7 @@ function toDate(val){
 function scoreClass(v){v=+v; return v>=80?'green':v>=65?'orange':'grey';}
 function scoreTag(v){v=+v; return v>=80?'Satisfaisant':v>=65?'À améliorer':'';}
 function riskClass(r){r=(r||'').toLowerCase();
-  return r.includes('faible')?'green':r.includes('moyen')?'orange':(r.includes('élev')||r.includes('elev'))?'red':'grey';}
+  return r.includes('faible')?'green':r.includes('moyen')?'orange':'grey';}
 function parseDate(d){const p=(d||'').split('/');return p.length===3?new Date(+p[2],+p[1]-1,+p[0]):null;}
 const COL={green:'var(--green)',orange:'var(--orange)',red:'var(--red)',grey:'var(--muted)'};
 const BG ={green:'var(--green-bg)',orange:'var(--orange-bg)',red:'var(--red-bg)',grey:'#eef1f6'};
